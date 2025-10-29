@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "ReadBuddy Demo",
+  "version": "1.0",
+  "description": "AI-powered summarization for visually impaired users.",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
