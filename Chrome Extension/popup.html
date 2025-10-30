@@ -1,17 +1,82 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>ReadBuddy Demo</title>
+  <title>ReadBuddy AI Assistant</title>
   <style>
-    body { font-family: Arial; width: 300px; padding: 10px; }
-    button { background: #0066ff; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; }
-    #output { margin-top: 10px; white-space: pre-wrap; }
+    body {
+      font-family: Arial, sans-serif;
+      width: 320px;
+      padding: 15px;
+      background-color: #f7f9fc;
+      color: #222;
+    }
+
+    h3 {
+      color: #0056ff;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    button {
+      width: 100%;
+      background: #0056ff;
+      color: #fff;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 8px;
+      font-size: 14px;
+      transition: background 0.2s ease;
+    }
+
+    button:hover {
+      background: #003ecb;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      margin-top: 10px;
+      padding: 5px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    #output {
+      margin-top: 15px;
+      padding: 10px;
+      background: #fff;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      white-space: pre-wrap;
+      font-size: 14px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .footer {
+      margin-top: 10px;
+      text-align: center;
+      font-size: 12px;
+      color: #555;
+    }
   </style>
 </head>
 <body>
-  <h3>ReadBuddy Summarizer</h3>
+  <h3>🧠 ReadBuddy AI</h3>
+
   <button id="summarizeBtn">Summarize Current Page</button>
-  <div id="output"></div>
+
+  <input type="file" id="imageInput" accept="image/*" />
+  <small>Select an image to get a caption</small>
+
+  <div id="output">Ready to summarize or describe.</div>
+
+  <div class="footer">
+    <b>ReadBuddy</b> — AI Accessibility Companion
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>
