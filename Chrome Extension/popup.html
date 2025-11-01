@@ -13,7 +13,7 @@
 
     body {
       width: 450px;
-      min-height: 400px;
+      min-height: 500px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       padding: 16px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -41,59 +41,6 @@
     .header p {
       font-size: 12px;
       color: #6b7280;
-    }
-
-    .controls {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    button {
-      padding: 12px 20px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    #summarizeBtn {
-      background: #2563eb;
-      color: white;
-      font-size: 16px;
-    }
-
-    #summarizeBtn:hover {
-      background: #1d4ed8;
-    }
-
-    .secondary-controls {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .secondary-controls button {
-      background: #f3f4f6;
-      color: #374151;
-      font-size: 13px;
-      padding: 10px;
-    }
-
-    .secondary-controls button:hover {
-      background: #e5e7eb;
     }
 
     .settings {
@@ -154,6 +101,15 @@
       cursor: pointer;
     }
 
+    select {
+      padding: 6px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      background: white;
+    }
+
     .speed-display {
       display: flex;
       align-items: center;
@@ -164,6 +120,148 @@
       font-weight: 600;
       color: #2563eb;
       min-width: 35px;
+    }
+
+    /* CONTINUOUS MODE SECTION */
+    .continuous-mode {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+      color: white;
+    }
+
+    .continuous-mode.active {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.9; }
+    }
+
+    .continuous-mode h3 {
+      font-size: 14px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .continuous-mode .mode-status {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-bottom: 12px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    .continuous-mode .mode-settings {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .continuous-mode .mode-setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    .continuous-mode select,
+    .continuous-mode input[type="checkbox"] {
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .continuous-mode label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #continuousModeBtn {
+      width: 100%;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: white;
+      color: #059669;
+    }
+
+    #continuousModeBtn.active {
+      background: white;
+      color: #dc2626;
+    }
+
+    #continuousModeBtn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    #summarizeBtn {
+      background: #2563eb;
+      color: white;
+      font-size: 16px;
+    }
+
+    #summarizeBtn:hover {
+      background: #1d4ed8;
+    }
+
+    .secondary-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .secondary-controls button {
+      background: #f3f4f6;
+      color: #374151;
+      font-size: 13px;
+      padding: 10px;
+    }
+
+    .secondary-controls button:hover {
+      background: #e5e7eb;
     }
 
     #output {
@@ -185,7 +283,6 @@
       font-style: italic;
     }
 
-    /* Scrollbar styling */
     #output::-webkit-scrollbar {
       width: 8px;
     }
@@ -229,18 +326,70 @@
     .icon {
       font-size: 18px;
     }
+
+    .divider {
+      height: 1px;
+      background: #e5e7eb;
+      margin: 16px 0;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <h1>🔊 ReadBuddy</h1>
-      <p>AI-Powered Screen Reader</p>
+      <p>AI-Powered Screen Reader with Continuous Monitoring</p>
     </div>
 
     <div class="shortcut-hint">
       💡 <strong>Quick Tip:</strong> Press <kbd>Ctrl+Alt+R</kbd> on any webpage to enable keyboard navigation
     </div>
+
+    <!-- CONTINUOUS MODE SECTION -->
+    <div class="continuous-mode" id="continuousModeSection">
+      <h3>
+        <span id="modeIcon">🎯</span>
+        <span>Continuous Monitoring</span>
+      </h3>
+      
+      <div class="mode-status" id="modeStatus">
+        Ready to start monitoring
+      </div>
+
+      <div class="mode-settings">
+        <div class="mode-setting-row">
+          <label>
+            <span>⏱️ Check Interval</span>
+          </label>
+          <select id="intervalSelect">
+            <option value="10000">10 seconds</option>
+            <option value="15000">15 seconds</option>
+            <option value="30000">30 seconds</option>
+          </select>
+        </div>
+
+        <div class="mode-setting-row">
+          <label for="monitorVideos">
+            <span>🎬 Monitor Videos</span>
+          </label>
+          <input type="checkbox" id="monitorVideos" checked>
+        </div>
+
+        <div class="mode-setting-row">
+          <label for="monitorPage">
+            <span>📄 Monitor Page Changes</span>
+          </label>
+          <input type="checkbox" id="monitorPage" checked>
+        </div>
+      </div>
+
+      <button id="continuousModeBtn">
+        <span class="icon">▶️</span>
+        <span id="continuousModeText">Start Continuous Mode</span>
+      </button>
+    </div>
+
+    <div class="divider"></div>
 
     <div class="settings">
       <h3>⚙️ Settings</h3>
@@ -266,7 +415,7 @@
     <div class="controls">
       <button id="summarizeBtn">
         <span class="icon">🤖</span>
-        <span>Analyze & Speak</span>
+        <span>Analyze & Speak (One-Time)</span>
       </button>
 
       <div class="secondary-controls">
@@ -284,7 +433,7 @@
     <div id="output"></div>
 
     <div class="footer">
-      <p>ReadBuddy v3.0 | Making the web accessible for everyone ♿</p>
+      <p>ReadBuddy v4.0 | Making the web accessible for everyone ♿</p>
     </div>
   </div>
 

@@ -1,9 +1,11 @@
 // Initialize TTS settings
 let speechRate = 1.0;
 let autoSpeak = true;
+let continuousModeActive = false;
+let currentTabId = null;
 
 // Load saved settings
-chrome.storage.sync.get(['speechRate', 'autoSpeak'], (result) => {
+chrome.storage.sync.get(['speechRate', 'autoSpeak', 'monitoringInterval', 'monitorVideos', 'monitorPage'], (result) => {
   speechRate = result.speechRate || 1.0;
   autoSpeak = result.autoSpeak !== false;
   
@@ -14,25 +16,194 @@ chrome.storage.sync.get(['speechRate', 'autoSpeak'], (result) => {
   if (document.getElementById('autoSpeak')) {
     document.getElementById('autoSpeak').checked = autoSpeak;
   }
+  
+  // Load continuous mode settings
+  if (document.getElementById('intervalSelect')) {
+    document.getElementById('intervalSelect').value = result.monitoringInterval || 10000;
+  }
+  if (document.getElementById('monitorVideos')) {
+    document.getElementById('monitorVideos').checked = result.monitorVideos !== false;
+  }
+  if (document.getElementById('monitorPage')) {
+    document.getElementById('monitorPage').checked = result.monitorPage !== false;
+  }
 });
 
-// Main summarize button
+// Check if continuous mode is already active on page load
+chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+  if (tabs[0]) {
+    currentTabId = tabs[0].id;
+    chrome.runtime.sendMessage({ 
+      action: 'getContinuousModeStatus', 
+      tabId: currentTabId 
+    }, (response) => {
+      if (response && response.active) {
+        updateContinuousModeUI(true);
+      }
+    });
+  }
+});
+
+// Listen for status updates from background
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'continuousModeStatus') {
+    updateModeStatus(request.status, request.nextCheck);
+  } else if (request.action === 'continuousResults') {
+    displayContinuousResults(request.data);
+  }
+});
+
+// CONTINUOUS MODE BUTTON
+document.getElementById('continuousModeBtn').addEventListener('click', async () => {
+  if (continuousModeActive) {
+    stopContinuousMode();
+  } else {
+    startContinuousMode();
+  }
+});
+
+async function startContinuousMode() {
+  try {
+    const interval = parseInt(document.getElementById('intervalSelect').value);
+    const monitorVideos = document.getElementById('monitorVideos').checked;
+    const monitorPage = document.getElementById('monitorPage').checked;
+
+    // Save preferences
+    chrome.storage.sync.set({
+      monitoringInterval: interval,
+      monitorVideos: monitorVideos,
+      monitorPage: monitorPage
+    });
+
+    let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    currentTabId = tab.id;
+
+    // Send start command to background
+    chrome.runtime.sendMessage({
+      action: 'startContinuousMode',
+      tabId: currentTabId,
+      config: {
+        interval: interval,
+        monitorVideos: monitorVideos,
+        monitorPage: monitorPage,
+        speechRate: speechRate
+      }
+    }, (response) => {
+      if (response && response.success) {
+        updateContinuousModeUI(true);
+        speak("Continuous monitoring started. I will check this page every " + (interval / 1000) + " seconds.");
+      } else {
+        alert('Failed to start continuous mode: ' + (response?.error || 'Unknown error'));
+      }
+    });
+
+  } catch (err) {
+    console.error('Error starting continuous mode:', err);
+    alert('Error: ' + err.message);
+  }
+}
+
+function stopContinuousMode() {
+  chrome.runtime.sendMessage({
+    action: 'stopContinuousMode',
+    tabId: currentTabId
+  }, (response) => {
+    if (response && response.success) {
+      updateContinuousModeUI(false);
+      speak("Continuous monitoring stopped.");
+    }
+  });
+}
+
+function updateContinuousModeUI(active) {
+  continuousModeActive = active;
+  const section = document.getElementById('continuousModeSection');
+  const button = document.getElementById('continuousModeBtn');
+  const buttonText = document.getElementById('continuousModeText');
+  const icon = document.querySelector('#continuousModeBtn .icon');
+  const modeIcon = document.getElementById('modeIcon');
+
+  if (active) {
+    section.classList.add('active');
+    button.classList.add('active');
+    buttonText.textContent = 'Stop Continuous Mode';
+    icon.textContent = '⏹️';
+    modeIcon.textContent = '🔴';
+    
+    // Disable interval and checkbox changes while active
+    document.getElementById('intervalSelect').disabled = true;
+    document.getElementById('monitorVideos').disabled = true;
+    document.getElementById('monitorPage').disabled = true;
+  } else {
+    section.classList.remove('active');
+    button.classList.remove('active');
+    buttonText.textContent = 'Start Continuous Mode';
+    icon.textContent = '▶️';
+    modeIcon.textContent = '🎯';
+    updateModeStatus('Ready to start monitoring');
+    
+    // Re-enable controls
+    document.getElementById('intervalSelect').disabled = false;
+    document.getElementById('monitorVideos').disabled = false;
+    document.getElementById('monitorPage').disabled = false;
+  }
+}
+
+function updateModeStatus(status, nextCheck) {
+  const statusEl = document.getElementById('modeStatus');
+  if (nextCheck) {
+    const seconds = Math.ceil(nextCheck / 1000);
+    statusEl.textContent = `${status} | Next check in: ${seconds}s`;
+  } else {
+    statusEl.textContent = status;
+  }
+}
+
+function displayContinuousResults(data) {
+  const outputDiv = document.getElementById('output');
+  let output = `<div style="margin-bottom: 15px; padding: 10px; background: #ecfdf5; border-left: 3px solid #10b981; border-radius: 4px;">`;
+  output += `<p style="font-size: 12px; color: #059669; margin-bottom: 8px;"><strong>🔄 Continuous Check at ${new Date().toLocaleTimeString()}</strong></p>`;
+  
+  if (data.type === 'video') {
+    output += `<h4 style="color: #2563eb; margin-bottom: 8px;">🎬 Video Motion Analysis</h4>`;
+    output += `<p style="margin-bottom: 5px;">${data.description}</p>`;
+    if (data.objects && data.objects.length > 0) {
+      output += `<p style="font-size: 12px; color: #6b7280;">Detected: ${data.objects.join(', ')}</p>`;
+    }
+  } else if (data.type === 'page') {
+    output += `<h4 style="color: #2563eb; margin-bottom: 8px;">📄 Page Changes</h4>`;
+    if (data.hasChanges) {
+      output += `<p>${data.summary}</p>`;
+    } else {
+      output += `<p style="color: #6b7280;">No significant changes detected.</p>`;
+    }
+  } else if (data.type === 'error') {
+    output += `<p style="color: #dc2626;">⚠️ ${data.message}</p>`;
+  }
+  
+  output += `</div>`;
+  outputDiv.innerHTML = output + outputDiv.innerHTML;
+
+  // Auto-speak if enabled
+  if (autoSpeak && data.speakText) {
+    speak(data.speakText);
+  }
+}
+
+// MAIN SUMMARIZE BUTTON (Original functionality)
 document.getElementById("summarizeBtn").addEventListener("click", async () => {
   try {
-    // Show loading state
     const outputDiv = document.getElementById("output");
     outputDiv.innerHTML = "⏳ Analyzing page... Please wait...";
     
     let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     
-    // Extract text + images + videos from the active webpage
     chrome.scripting.executeScript(
       {
         target: { tabId: tab.id },
         func: () => {
           const text = document.body.innerText.slice(0, 4000);
           
-          // Get images
           const images = Array.from(document.images)
             .filter(img => {
               const src = img.src || "";
@@ -43,17 +214,14 @@ document.getElementById("summarizeBtn").addEventListener("click", async () => {
             .map(img => img.src)
             .slice(0, 10);
           
-          // Get videos (including YouTube embeds)
           const videos = [];
           
-          // Get video elements
           document.querySelectorAll('video').forEach(v => {
             if (v.src || v.currentSrc) {
               videos.push(v.src || v.currentSrc);
             }
           });
           
-          // Get YouTube and Vimeo iframes
           document.querySelectorAll('iframe').forEach(iframe => {
             const src = iframe.src || '';
             if (src.includes('youtube.com') || src.includes('youtu.be') || src.includes('vimeo.com')) {
@@ -75,7 +243,6 @@ document.getElementById("summarizeBtn").addEventListener("click", async () => {
         console.log("🖼️ Found images:", images.length);
         console.log("🎬 Found videos:", videos.length);
         
-        // Send content to backend
         const response = await fetch("http://127.0.0.1:8000/analyze-page", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -85,10 +252,8 @@ document.getElementById("summarizeBtn").addEventListener("click", async () => {
         const data = await response.json();
         console.log("✅ Backend Response:", data);
         
-        // Display results
         displayResults(data);
         
-        // Auto-speak if enabled
         if (autoSpeak) {
           speakResults(data);
         }
@@ -103,7 +268,6 @@ document.getElementById("summarizeBtn").addEventListener("click", async () => {
 function displayResults(data) {
   let output = '';
   
-  // Text Summary
   output += '<div style="margin-bottom: 20px;">';
   output += '<h3 style="color: #2563eb; margin-bottom: 10px;">📝 Text Summary</h3>';
   
@@ -116,7 +280,6 @@ function displayResults(data) {
   }
   output += '</div>';
   
-  // Images
   output += '<div style="margin-bottom: 20px;">';
   output += '<h3 style="color: #2563eb; margin-bottom: 10px;">🖼️ Image Descriptions</h3>';
   
@@ -138,7 +301,6 @@ function displayResults(data) {
   }
   output += '</div>';
   
-  // Videos
   if (data.video_descriptions && data.video_descriptions.length > 0 && 
       data.video_descriptions[0].type !== 'none') {
     output += '<div style="margin-bottom: 20px;">';
@@ -160,7 +322,6 @@ function displayResults(data) {
     output += '</div>';
   }
   
-  // Stats
   if (data.count) {
     output += `<p style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">`;
     output += `📊 Processed: ${data.count.images_processed} images`;
@@ -179,12 +340,10 @@ function displayResults(data) {
 function speakResults(data) {
   let textToSpeak = "";
   
-  // Speak summaries
   if (data.summaries && data.summaries.length > 0) {
     textToSpeak += "Page summary: " + data.summaries.join(". ") + ". ";
   }
   
-  // Speak image descriptions
   if (data.image_descriptions && data.image_descriptions.length > 0) {
     const imageCount = data.image_descriptions.filter(item => 
       (typeof item === 'string' && !item.includes("No valid")) || 
@@ -202,7 +361,6 @@ function speakResults(data) {
     }
   }
   
-  // Speak video descriptions
   if (data.video_descriptions && data.video_descriptions.length > 0) {
     const validVideos = data.video_descriptions.filter(v => v.type !== 'none');
     if (validVideos.length > 0) {
@@ -221,7 +379,6 @@ function speakResults(data) {
 }
 
 function speak(text) {
-  // Stop any ongoing speech
   window.speechSynthesis.cancel();
   
   const utterance = new SpeechSynthesisUtterance(text);
@@ -256,7 +413,7 @@ if (document.getElementById('stopSpeaking')) {
   });
 }
 
-// Read aloud button (manual trigger)
+// Read aloud button
 if (document.getElementById('readAloud')) {
   document.getElementById('readAloud').addEventListener('click', () => {
     const outputDiv = document.getElementById("output");

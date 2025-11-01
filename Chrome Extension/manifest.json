@@ -1,29 +1,55 @@
 {
   "manifest_version": 3,
   "name": "ReadBuddy - AI Screen Reader",
-  "version": "3.0.0",
-  "description": "AI-powered screen reader that summarizes text, describes images, and analyzes videos with text-to-speech support",
+  "version": "4.1.2",
+  "description": "AI-powered screen reader with bubble interface and continuous monitoring",
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
-    "tts"
+    "tts",
+    "tabs",
+    "alarms"
   ],
   "host_permissions": [
     "http://127.0.0.1:8000/*",
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "<all_urls>"
   ],
   "action": {
     "default_popup": "popup.html"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_end"
+      "js": [
+        "frame-processor.js",
+        "page-change-detector.js",
+        "video-monitor.js",
+        "continuous-mode.js",
+        "content.js",
+        "bubble-button.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
     }
   ],
-  "background": {
-    "service_worker": "background.js"
+  "web_accessible_resources": [
+    {
+      "resources": ["*.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "commands": {
+    "toggle-screen-reader": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+R",
+        "mac": "Command+Shift+R"
+      },
+      "description": "Toggle ReadBuddy screen reader"
+    }
   }
 }

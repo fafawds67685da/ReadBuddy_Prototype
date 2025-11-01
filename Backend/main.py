@@ -6,14 +6,16 @@ import requests
 import io
 import urllib3
 from urllib.parse import urlparse, parse_qs
+import base64
+import numpy as np
 
 # Disable SSL warnings for sites with invalid certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = FastAPI(
     title="ReadBuddy AI Backend",
-    description="Summarizes webpage text, generates captions for images, and analyzes videos",
-    version="3.0.0"
+    description="Summarizes webpage text, generates captions for images, analyzes videos, and processes video frames for continuous monitoring",
+    version="4.0.0"
 )
 
 # Allow Chrome extension access
@@ -29,11 +31,11 @@ app.add_middleware(
 print("⏳ Loading AI models (this may take a minute)...")
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
-# FIX: Add padding and batch processing configuration
+# FIX: Add max_new_tokens for faster processing
 captioner = pipeline(
     "image-to-text", 
     model="Salesforce/blip-image-captioning-large",
-    max_new_tokens=50  # Limit caption length for faster processing
+    max_new_tokens=50
 )
 print("✅ Models loaded successfully!")
 
@@ -63,12 +65,53 @@ def get_youtube_transcript(video_id):
 def generate_caption_safe(image):
     """Safely generate caption for a single image with proper error handling"""
     try:
-        # Process single image with explicit parameters
         result = captioner(image, max_new_tokens=50)
         return result[0]["generated_text"]
     except Exception as e:
         print(f"   ⚠️ Caption generation error: {str(e)[:100]}")
         return None
+
+def decode_base64_image(base64_string):
+    """Decode base64 string to PIL Image"""
+    try:
+        # Remove data URL prefix if present
+        if ',' in base64_string:
+            base64_string = base64_string.split(',')[1]
+        
+        image_data = base64.b64decode(base64_string)
+        image = Image.open(io.BytesIO(image_data)).convert("RGB")
+        return image
+    except Exception as e:
+        print(f"Error decoding base64 image: {e}")
+        return None
+
+def compare_frames(frames):
+    """Compare frames to detect motion/changes"""
+    if len(frames) < 2:
+        return "insufficient frames for comparison"
+    
+    try:
+        # Convert PIL images to numpy arrays
+        frame_arrays = [np.array(frame) for frame in frames]
+        
+        # Calculate differences between consecutive frames
+        differences = []
+        for i in range(len(frame_arrays) - 1):
+            diff = np.abs(frame_arrays[i].astype(float) - frame_arrays[i+1].astype(float))
+            avg_diff = np.mean(diff)
+            differences.append(avg_diff)
+        
+        avg_motion = np.mean(differences)
+        
+        if avg_motion > 30:
+            return "significant motion detected"
+        elif avg_motion > 15:
+            return "moderate motion"
+        else:
+            return "minimal motion"
+    except Exception as e:
+        print(f"Error comparing frames: {e}")
+        return "motion analysis unavailable"
 
 @app.post("/analyze-page")
 async def analyze_page(request: Request):
@@ -87,7 +130,6 @@ async def analyze_page(request: Request):
         # --- TEXT SUMMARIZATION ---
         summaries = []
         if text and text.strip():
-            # Split text into 2000-character chunks to avoid token limit
             chunks = [text[i:i + 2000] for i in range(0, len(text), 2000)]
             for idx, chunk in enumerate(chunks, 1):
                 try:
@@ -105,7 +147,7 @@ async def analyze_page(request: Request):
         
         for idx, url in enumerate(image_urls, 1):
             if valid_images >= 5:
-                break  # Limit processing for speed
+                break
                 
             if not url.startswith("http"):
                 print(f"⚠️ Skipping non-HTTP URL: {url[:70]}")
@@ -114,7 +156,6 @@ async def analyze_page(request: Request):
             try:
                 print(f"🔍 Processing image {idx}: {url[:70]}...")
                 
-                # Download the image with proper headers
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
@@ -128,16 +169,13 @@ async def analyze_page(request: Request):
                 )
                 response.raise_for_status()
                 
-                # Check content type
                 content_type = response.headers.get("Content-Type", "").lower()
                 print(f"   Content-Type: {content_type}")
                 
-                # Try to open the image regardless of content-type header
                 try:
                     image_data = io.BytesIO(response.content)
                     image = Image.open(image_data).convert("RGB")
                     
-                    # Check if image is reasonably sized
                     width, height = image.size
                     print(f"   Image size: {width}x{height}")
                     
@@ -145,7 +183,6 @@ async def analyze_page(request: Request):
                         print(f"   ⚠️ Image too small, skipping")
                         continue
                     
-                    # FIX: Use the safe caption generation function
                     caption_text = generate_caption_safe(image)
                     
                     if caption_text:
@@ -179,23 +216,20 @@ async def analyze_page(request: Request):
         valid_videos = 0
         
         for idx, url in enumerate(video_urls, 1):
-            if valid_videos >= 3:  # Limit to 3 videos
+            if valid_videos >= 3:
                 break
             
             try:
                 print(f"🎬 Processing video {idx}: {url[:70]}...")
                 
-                # Check if it's a YouTube video
                 youtube_id = extract_youtube_id(url)
                 
                 if youtube_id:
                     print(f"   📺 YouTube video detected: {youtube_id}")
                     
-                    # Try to get transcript
                     transcript = get_youtube_transcript(youtube_id)
                     
                     if transcript and len(transcript.strip()) > 50:
-                        # Summarize transcript
                         transcript_chunk = transcript[:2000]
                         try:
                             summary = summarizer(transcript_chunk, max_length=150, min_length=50, do_sample=False)
@@ -227,7 +261,6 @@ async def analyze_page(request: Request):
                         })
                         valid_videos += 1
                 else:
-                    # Non-YouTube videos
                     video_descriptions.append({
                         "url": url,
                         "type": "video",
@@ -263,3 +296,87 @@ async def analyze_page(request: Request):
         import traceback
         traceback.print_exc()
         return {"error": str(e)}
+
+
+@app.post("/analyze-video-frames")
+async def analyze_video_frames(request: Request):
+    """
+    NEW ENDPOINT: Receives video frames and analyzes motion/action
+    Used for continuous video monitoring
+    """
+    try:
+        data = await request.json()
+        frame_data_list = data.get("frames", [])
+        timestamps = data.get("timestamps", [])
+        metadata = data.get("metadata", {})
+        
+        print(f"🎬 Received {len(frame_data_list)} video frames for analysis")
+        
+        if not frame_data_list:
+            return {
+                "error": "No frames provided",
+                "description": "No frames to analyze",
+                "objects_detected": [],
+                "confidence": 0
+            }
+        
+        # Decode frames
+        frames = []
+        for idx, frame_data in enumerate(frame_data_list):
+            image = decode_base64_image(frame_data)
+            if image:
+                frames.append(image)
+                print(f"   ✅ Decoded frame {idx + 1}")
+            else:
+                print(f"   ⚠️ Could not decode frame {idx + 1}")
+        
+        if not frames:
+            return {
+                "error": "Could not decode any frames",
+                "description": "Frame decoding failed",
+                "objects_detected": [],
+                "confidence": 0
+            }
+        
+        # Analyze motion between frames
+        motion_level = compare_frames(frames)
+        print(f"   📊 Motion level: {motion_level}")
+        
+        # Generate caption for middle frame (most representative)
+        middle_frame = frames[len(frames) // 2]
+        description = generate_caption_safe(middle_frame)
+        
+        if not description:
+            description = f"Video frame analysis: {motion_level}"
+        else:
+            # Enhance description with motion info
+            description = f"{description}. Motion: {motion_level}"
+        
+        print(f"   ✅ Generated description: {description}")
+        
+        # Try to detect objects/people (simplified - using caption)
+        objects_detected = []
+        common_objects = ['person', 'people', 'car', 'building', 'tree', 'street', 'room', 'hand', 'face']
+        for obj in common_objects:
+            if obj in description.lower():
+                objects_detected.append(obj)
+        
+        return {
+            "description": description,
+            "objects_detected": objects_detected,
+            "confidence": 0.75 if description else 0.5,
+            "motion_level": motion_level,
+            "frames_analyzed": len(frames),
+            "metadata": metadata
+        }
+        
+    except Exception as e:
+        print(f"❌ Error in /analyze-video-frames: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "error": str(e),
+            "description": "Error analyzing video frames",
+            "objects_detected": [],
+            "confidence": 0
+        }

@@ -1,4 +1,4 @@
-// content.js - Inject this into every webpage for screen reader functionality
+// content.js - FIXED: Proper async message handling and error recovery
 
 class ReadBuddyScreenReader {
   constructor() {
@@ -15,8 +15,7 @@ class ReadBuddyScreenReader {
   initKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
       if (!this.enabled) {
-        // Only listen for toggle shortcut when disabled
-        if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'r') {
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'r') {
           e.preventDefault();
           this.toggle();
         }
@@ -34,49 +33,47 @@ class ReadBuddyScreenReader {
   handleKeyPress(e) {
     const key = e.key.toLowerCase();
     const ctrl = e.ctrlKey;
-    const alt = e.altKey;
+    const shift = e.shiftKey;
 
-    // Toggle screen reader
-    if (ctrl && alt && key === 'r') {
+    if (ctrl && shift && key === 'r') {
       this.toggle();
       return true;
     }
 
-    // Navigation keys
     switch (key) {
-      case 'j': // Next element
+      case 'j':
         this.navigateNext();
         return true;
       
-      case 'k': // Previous element
+      case 'k':
         this.navigatePrevious();
         return true;
       
-      case 'h': // Next heading
+      case 'h':
         this.navigateToNext('h1, h2, h3, h4, h5, h6');
         return true;
       
-      case 'l': // Next link
+      case 'l':
         this.navigateToNext('a[href]');
         return true;
       
-      case 'b': // Next button
+      case 'b':
         this.navigateToNext('button, input[type="button"], input[type="submit"]');
         return true;
       
-      case 'g': // Next image
+      case 'g':
         this.navigateToNext('img');
         return true;
       
-      case 'f': // Next form field
+      case 'f':
         this.navigateToNext('input:not([type="button"]):not([type="submit"]), select, textarea');
         return true;
       
-      case 's': // Stop speech
+      case 's':
         this.stopSpeaking();
         return true;
       
-      case 'r': // Repeat current element
+      case 'r':
         this.announceCurrentElement();
         return true;
       
@@ -88,7 +85,7 @@ class ReadBuddyScreenReader {
         if (this.currentElement && !this.currentElement.matches('input, textarea, select')) {
           this.currentElement.click();
         }
-        return false; // Allow default for form fields
+        return false;
     }
 
     return false;
@@ -98,10 +95,9 @@ class ReadBuddyScreenReader {
     this.enabled = !this.enabled;
     
     if (this.enabled) {
-      this.speak("ReadBuddy screen reader enabled. Press J to navigate forward, K to navigate backward, H for headings, L for links, B for buttons, G for images. Press Control Alt R to disable.");
+      this.speak("ReadBuddy screen reader enabled. Press J to navigate forward, K to navigate backward, H for headings, L for links, B for buttons, G for images. Press Control Shift R to disable.");
       this.updateNavigableElements();
       
-      // Start at the first heading or main content
       const startElement = document.querySelector('h1, h2, main, article') || document.body;
       this.currentElement = startElement;
       this.highlightElement(startElement);
@@ -185,7 +181,6 @@ class ReadBuddyScreenReader {
     const tag = element.tagName.toLowerCase();
     let description = '';
 
-    // Element type
     if (tag.match(/h[1-6]/)) {
       description = `Heading level ${tag.charAt(1)}, `;
     } else if (tag === 'a') {
@@ -204,7 +199,6 @@ class ReadBuddyScreenReader {
       description = '';
     }
 
-    // Element content
     if (tag === 'img') {
       description += element.alt || element.title || 'no description available';
     } else if (element.ariaLabel) {
@@ -222,7 +216,6 @@ class ReadBuddyScreenReader {
       }
     }
 
-    // Additional context
     if (element.disabled) {
       description += ', disabled';
     }
@@ -298,16 +291,205 @@ class ReadBuddyScreenReader {
 // Initialize screen reader
 const readBuddy = new ReadBuddyScreenReader();
 
-// Listen for messages from popup
+// ============ BUBBLE BUTTON INTEGRATION ============
+
+// Extract page content for bubble's "Analyze & Speak"
+function extractPageContent() {
+  console.log('📄 Extracting page content for bubble...');
+  
+  // Get text content
+  const textElements = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, article, main, section');
+  const textContent = Array.from(textElements)
+    .map(el => el.textContent.trim())
+    .filter(text => text.length > 20)
+    .join(' ')
+    .substring(0, 4000); // Match popup.js limit
+
+  // Get images
+  const images = Array.from(document.querySelectorAll('img'))
+    .filter(img => {
+      const src = img.src || "";
+      const isValidSize = img.width > 100 && img.height > 100;
+      const isHttp = src.startsWith("http");
+      return isValidSize && isHttp;
+    })
+    .map(img => img.src)
+    .slice(0, 10);
+
+  // Get videos
+  const videos = [];
+  
+  document.querySelectorAll('video').forEach(v => {
+    if (v.src || v.currentSrc) {
+      videos.push(v.src || v.currentSrc);
+    }
+  });
+  
+  document.querySelectorAll('iframe').forEach(iframe => {
+    const src = iframe.src || '';
+    if (src.includes('youtube.com') || src.includes('youtu.be') || src.includes('vimeo.com')) {
+      videos.push(src);
+    }
+  });
+
+  return {
+    text: textContent,
+    images: images,
+    videos: videos.slice(0, 5),
+    url: window.location.href,
+    title: document.title,
+    timestamp: Date.now()
+  };
+}
+
+// ✅ FIXED: Better async helper function with longer timeout
+function waitForContinuousMode(timeout = 5000) {
+  return new Promise((resolve, reject) => {
+    // Check if already loaded and ready
+    if (window.continuousModeInstance) {
+      // Check if dependencies are ready
+      if (window.continuousModeInstance.dependenciesReady) {
+        resolve(window.continuousModeInstance);
+        return;
+      }
+      // If not ready, wait for initialization
+      window.continuousModeInstance.initializationPromise
+        .then(() => resolve(window.continuousModeInstance))
+        .catch(err => reject(err));
+      return;
+    }
+
+    // Wait for it to load
+    const startTime = Date.now();
+    const checkInterval = setInterval(() => {
+      if (window.continuousModeInstance) {
+        clearInterval(checkInterval);
+        
+        // Wait for dependencies to be ready
+        window.continuousModeInstance.initializationPromise
+          .then(() => resolve(window.continuousModeInstance))
+          .catch(err => reject(err));
+          
+      } else if (Date.now() - startTime > timeout) {
+        clearInterval(checkInterval);
+        reject(new Error('ContinuousMode failed to load after ' + (timeout/1000) + ' seconds. Please refresh the page and wait a moment before trying again.'));
+      }
+    }, 100);
+  });
+}
+
+// Listen for messages from popup, background, and bubble
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('Content script received:', request.action);
+
+  // ============ SCREEN READER ACTIONS ============
   if (request.action === 'toggle') {
     readBuddy.toggle();
     sendResponse({ enabled: readBuddy.enabled });
-  } else if (request.action === 'updateRate') {
+    return false; // Sync response
+  } 
+  
+  else if (request.action === 'updateRate') {
     readBuddy.speechRate = request.rate;
     sendResponse({ success: true });
+    return false; // Sync response
   }
-  return true;
+
+  // ============ BUBBLE BUTTON ACTIONS ============
+  else if (request.action === 'getPageContent') {
+    try {
+      const pageContent = extractPageContent();
+      console.log('✅ Page content extracted:', {
+        textLength: pageContent.text.length,
+        images: pageContent.images.length,
+        videos: pageContent.videos.length
+      });
+      sendResponse({ success: true, data: pageContent });
+    } catch (error) {
+      console.error('❌ Error extracting page content:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+    return false; // Sync response
+  }
+
+  else if (request.action === 'bubbleStatusUpdate') {
+    // Bubble receives status updates from background
+    console.log('📊 Bubble status update:', request.status);
+    sendResponse({ received: true });
+    return false; // Sync response
+  }
+  
+  // ============ CONTINUOUS MODE HANDLERS (FIXED) ============
+  else if (request.action === 'initContinuousMode') {
+    console.log('Initializing continuous mode with config:', request.config);
+    
+    // Use async IIFE to handle properly
+    (async () => {
+      try {
+        const instance = await waitForContinuousMode(5000);
+        await instance.initialize(request.config);
+        sendResponse({ success: true });
+      } catch (err) {
+        console.error('❌ ContinuousMode initialization failed:', err);
+        sendResponse({ 
+          success: false, 
+          error: err.message || 'Failed to initialize continuous mode. Please refresh the page.'
+        });
+      }
+    })();
+    
+    return true; // Keep channel open for async response
+  }
+  
+  else if (request.action === 'stopContinuousMode') {
+    console.log('Stopping continuous mode');
+    
+    (async () => {
+      try {
+        const instance = await waitForContinuousMode(1000);
+        instance.stop();
+        sendResponse({ success: true });
+      } catch (err) {
+        // If it doesn't exist, consider it already stopped
+        console.log('ContinuousMode not available, already stopped');
+        sendResponse({ success: true });
+      }
+    })();
+    
+    return true; // Keep channel open
+  }
+  
+  else if (request.action === 'performContinuousCheck') {
+    console.log('Performing continuous check...');
+    
+    (async () => {
+      try {
+        const instance = await waitForContinuousMode(1000);
+        const result = await instance.performCheck();
+        
+        console.log('Check complete:', result);
+        
+        // Send results back to background
+        chrome.runtime.sendMessage({
+          action: 'continuousCheckComplete',
+          tabId: sender.tab?.id,
+          data: result
+        }).catch(err => {
+          console.warn('Could not send results to background:', err);
+        });
+        
+        sendResponse({ success: true, result: result });
+      } catch (err) {
+        console.error('Check failed:', err);
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    
+    return true; // Keep channel open for async response
+  }
+  
+  // Unknown action
+  return false;
 });
 
-console.log('ReadBuddy content script loaded. Press Ctrl+Alt+R to enable screen reader.');
+console.log('✅ ReadBuddy content script loaded. Press Ctrl+Shift+R to enable screen reader.');
